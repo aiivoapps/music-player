@@ -1,33 +1,17 @@
 {
-  "name": "Explorer Music Player",
-  "short_name": "ExplorerMusic",
-  "description": "Player de música com navegação em pastas, efeitos 3D/8D/16D e personalização total",
+  "name": "Aiivo Music Player",
+  "short_name": "Aiivo Player",
+  "description": "Seu player de música inteligente",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#0f0f13",
-  "theme_color": "#0f0f13",
-  "lang": "pt-BR",
+  "background_color": "#121212",
+  "theme_color": "#6200ee",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-512.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/2874/2874821.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
-  ],
-  "categories": ["music", "entertainment"],
-  "prefer_related_applications": false
+  ]
 }
