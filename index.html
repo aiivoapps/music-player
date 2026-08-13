@@ -6,16 +6,51 @@
     <title>Aiivo Music Player</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6200ee">
-    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #6200ee;
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --text-color: #ffffff;
+            --text-secondary: #b3b3b3;
+            --accent-color: #03dac6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; justify-content: center; overflow: hidden; }
+        .app-container { width: 100%; max-width: 480px; height: 100%; display: flex; flex-direction: column; background: var(--bg-color); }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background-color: var(--surface-color); border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .header-title { display: flex; align-items: center; gap: 10px; font-weight: bold; color: var(--primary-color); }
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 10px 15px; }
+        .path-navigator { display: flex; align-items: center; justify-content: space-between; background: var(--surface-color); padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9rem; }
+        #current-path-label { flex: 1; margin: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+        .explorer-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .explorer-item { display: flex; align-items: center; gap: 12px; padding: 12px; background-color: var(--surface-color); border-radius: 8px; cursor: pointer; }
+        .explorer-item i { font-size: 1.2rem; color: var(--primary-color); }
+        .explorer-item span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .player-section { background-color: var(--surface-color); padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; gap: 10px; }
+        .now-playing-info { display: flex; justify-content: space-between; align-items: center; }
+        #current-song-title { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%; }
+        .progress-container { display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: var(--text-secondary); }
+        .progress-container input[type="range"] { flex: 1; accent-color: var(--primary-color); }
+        .player-controls-row { display: flex; justify-content: space-between; align-items: center; }
+        .main-controls { display: flex; align-items: center; gap: 15px; }
+        .icon-btn { background: none; border: none; color: var(--text-color); font-size: 1.2rem; cursor: pointer; padding: 8px; }
+        .primary-play { background-color: var(--primary-color); color: #fff; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; }
+        .primary-btn { background-color: var(--primary-color); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: flex-end; z-index: 100; }
+        .modal.hidden { display: none; }
+        .modal-content { background: var(--surface-color); width: 100%; max-width: 480px; border-top-left-radius: 20px; border-top-right-radius: 20px; padding: 20px; max-height: 80vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .settings-body { display: flex; flex-direction: column; gap: 15px; }
+        .styled-select { background: var(--bg-color); color: var(--text-color); border: 1px solid rgba(255,255,255,0.2); padding: 8px; border-radius: 6px; width: 100%; }
+    </style>
 </head>
 <body>
 
     <div class="app-container">
         <header>
-            <div class="header-title">
-                <i class="fa-solid fa-music"></i> <span>Aiivo Explorer Player</span>
-            </div>
+            <div class="header-title"><i class="fa-solid fa-music"></i> <span>Aiivo Explorer</span></div>
             <button id="btn-settings" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
         </header>
 
@@ -25,11 +60,9 @@
                 <span id="current-path-label">Selecione a Pasta Raiz</span>
                 <button id="btn-select-root" class="primary-btn"><i class="fa-solid fa-folder-open"></i> Raiz</button>
             </div>
-
             <div id="explorer-list" class="explorer-list">
-                <div class="welcome-message">
-                    <i class="fa-solid fa-folder-tree"></i>
-                    <p>Toque em "Raiz" para selecionar a pasta de músicas.</p>
+                <div class="explorer-item" style="justify-content: center; color: var(--text-secondary);">
+                    <p>Toque em "Raiz" para carregar</p>
                 </div>
             </div>
         </main>
@@ -39,26 +72,18 @@
                 <span id="current-song-title">Nenhuma música tocando</span>
                 <button id="btn-favorite" class="icon-btn"><i class="fa-regular fa-heart"></i></button>
             </div>
-
             <div class="progress-container">
                 <span id="time-current">00:00</span>
                 <input type="range" id="progress-bar" value="0" min="0" max="100" step="0.1">
                 <span id="time-total">00:00</span>
             </div>
-
             <div class="player-controls-row">
                 <div class="main-controls">
                     <button id="btn-prev" class="icon-btn"><i class="fa-solid fa-backward-step"></i></button>
                     <button id="btn-play-pause" class="icon-btn primary-play"><i class="fa-solid fa-play"></i></button>
                     <button id="btn-next" class="icon-btn"><i class="fa-solid fa-forward-step"></i></button>
                 </div>
-
-                <div class="volume-control-wrapper">
-                    <div id="volume-popup" class="volume-popup">
-                        <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1" orient="vertical">
-                    </div>
-                    <button id="btn-volume-toggle" class="icon-btn"><i class="fa-solid fa-volume-high"></i></button>
-                </div>
+                <button id="btn-volume-toggle" class="icon-btn"><i class="fa-solid fa-volume-high"></i></button>
             </div>
         </div>
     </div>
@@ -70,19 +95,9 @@
                 <button id="btn-close-settings" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="settings-body">
-                <div class="setting-group">
-                    <button id="btn-filter-favorites" class="secondary-btn"><i class="fa-solid fa-heart"></i> Ver Favoritos</button>
-                </div>
-                <div class="setting-group">
-                    <label>Personalização</label>
-                    <div class="color-pickers">
-                        <div><span>Principal</span><input type="color" id="color-primary" value="#6200ee"></div>
-                        <div><span>Fundo</span><input type="color" id="color-bg" value="#121212"></div>
-                        <div><span>Texto</span><input type="color" id="color-text" value="#ffffff"></div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <label>Efeitos de Áudio</label>
+                <button id="btn-filter-favorites" class="primary-btn" style="width:100%"><i class="fa-solid fa-heart"></i> Ver Favoritos</button>
+                <div>
+                    <label style="font-size:0.85rem; color:var(--text-secondary);">Efeitos de Áudio</label>
                     <select id="audio-effect-select" class="styled-select">
                         <option value="normal">Normal</option>
                         <option value="3d">Áudio 3D</option>
