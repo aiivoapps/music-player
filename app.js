@@ -186,26 +186,104 @@
   }
 
   async function selectRoot() {
-    try {
-      const handle = await window.showDirectoryPicker({ mode: 'read' });
-      state.rootHandle = handle;
-      state.rootName = handle.name;
-      els.rootPathText.textContent = handle.name;
-      els.rootPathBar.classList.remove('hidden');
-      els.emptyState.classList.add('hidden');
-      showToast('Escaneando pastas...');
-      const tree = await scanDirectory(handle);
-      state.tree = tree;
-      state.flatAudio = collectFlat(tree);
-      renderTree();
-      saveRecentRootName(handle.name);
-      showToast(`${state.flatAudio.length} faixas encontradas`);
-    } catch (err) {
-      if (err.name !== 'AbortError') {
+    // Tenta a API moderna primeiro (computador)
+    if (window.showDirectoryPicker) {
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'read' });
+        state.rootHandle = handle;
+        state.rootName = handle.name;
+        els.rootPathText.textContent = handle.name;
+        els.rootPathBar.classList.remove('hidden');
+        els.emptyState.classList.add('hidden');
+        showToast('Escaneando pastas...');
+        const tree = await scanDirectory(handle);
+        state.tree = tree;
+        state.flatAudio = collectFlat(tree);
+        renderTree();
+        showToast(`${state.flatAudio.length} faixas encontradas`);
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
         console.error(err);
-        showToast('Erro ao selecionar pasta. Use Chrome/Edge.');
       }
     }
+
+    // Fallback para Android
+    const input = document.getElementById('folder-input');
+    if (input) {
+      input.value = '';
+      input.click();
+    } else {
+      showToast('Seu navegador não suporta seleção de pasta.');
+    }
+  }
+
+  // Processa os arquivos selecionados pelo input (Android)
+  function handleFolderInput(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) {
+      showToast('Nenhum arquivo selecionado');
+      return;
+    }
+
+    showToast('Organizando pastas...');
+
+    const root = { type: 'folder', name: 'Músicas', path: '', children: [], expanded: true };
+    const flat = [];
+
+    files.forEach(file => {
+      if (!isAudio(file.name)) return;
+
+      const rel = file.webkitRelativePath || file.name;
+      const parts = rel.split('/');
+      const fileName = parts.pop();
+
+      let current = root;
+      let currentPath = '';
+
+      parts.forEach(part => {
+        if (!part) return;
+        currentPath = currentPath ? `\( {currentPath}/ \){part}` : part;
+        let child = current.children.find(c => c.name === part && c.type === 'folder');
+        if (!child) {
+          child = { type: 'folder', name: part, path: currentPath, children: [], expanded: false };
+          current.children.push(child);
+        }
+        current = child;
+      });
+
+      const filePath = currentPath ? `\( {currentPath}/ \){fileName}` : fileName;
+      const audioNode = {
+        type: 'audio',
+        name: fileName,
+        path: filePath,
+        file: file,
+      };
+      current.children.push(audioNode);
+      flat.push(audioNode);
+    });
+
+    function sortTree(node) {
+      if (!node.children) return;
+      node.children.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+      node.children.forEach(sortTree);
+    }
+    sortTree(root);
+
+    state.rootHandle = null;
+    state.rootName = root.name;
+    state.tree = root.children;
+    state.flatAudio = flat;
+
+    els.rootPathText.textContent = root.name + ` (${flat.length} faixas)`;
+    els.rootPathBar.classList.remove('hidden');
+    els.emptyState.classList.add('hidden');
+
+    renderTree();
+    showToast(`${flat.length} faixas encontradas`);
   }
 
   // ============ Tree Rendering ============
@@ -331,7 +409,16 @@
       if (audioEl.src && audioEl.src.startsWith('blob:')) {
         URL.revokeObjectURL(audioEl.src);
       }
-      const file = await track.handle.getFile();
+
+      let file;
+      if (track.file) {
+        file = track.file;
+      } else if (track.handle) {
+        file = await track.handle.getFile();
+      } else {
+        throw new Error('Arquivo não encontrado');
+      }
+
       const url = URL.createObjectURL(file);
       audioEl.src = url;
       audioEl.volume = state.muted ? 0 : state.volume;
@@ -368,7 +455,7 @@
   }
 
   function highlightPlaying() {
-    \[ ('.tree-item.active-playing').forEach(el => el.classList.remove('active-playing'));
+    $$('.tree-item.active-playing').forEach(el => el.classList.remove('active-playing'));
     if (state.currentIndex >= 0) {
       const path = state.flatAudio[state.currentIndex].path;
       const node = els.treeView.querySelector(`[data-path="${CSS.escape(path)}"] .tree-item`);
@@ -395,458 +482,3 @@
   function playNext() {
     const queue = getPlayQueue();
     if (!queue.length) return;
-
-    let nextPath;
-    if (state.shuffle) {
-      const available = queue.filter((_, i) => i !== state.currentIndex || queue.length === 1);
-      nextPath = available[Math.floor(Math.random() * available.length)]?.path;
-    } else {
-      const curPath = state.currentIndex >= 0 ? state.flatAudio[state.currentIndex].path : null;
-      let idxInQueue = queue.findIndex(t => t.path === curPath);
-      if (idxInQueue === -1) idxInQueue = -1;
-      let nextIdx = idxInQueue + 1;
-      if (nextIdx >= queue.length) {
-        if (state.repeat === 1) nextIdx = 0;
-        else return;
-      }
-      nextPath = queue[nextIdx]?.path;
-    }
-    if (nextPath) playTrackByPath(nextPath);
-  }
-
-  function playPrev() {
-    if (audioEl.currentTime > 3) {
-      audioEl.currentTime = 0;
-      return;
-    }
-    const queue = getPlayQueue();
-    if (!queue.length) return;
-    const curPath = state.currentIndex >= 0 ? state.flatAudio[state.currentIndex].path : null;
-    let idxInQueue = queue.findIndex(t => t.path === curPath);
-    if (idxInQueue <= 0) {
-      if (state.repeat === 1) idxInQueue = queue.length;
-      else {
-        audioEl.currentTime = 0;
-        return;
-      }
-    }
-    const prev = queue[idxInQueue - 1];
-    if (prev) playTrackByPath(prev.path);
-  }
-
-  // ============ Favorites ============
-  function toggleFavorite(path) {
-    if (state.favorites.has(path)) {
-      state.favorites.delete(path);
-      showToast('Removido dos favoritos');
-    } else {
-      state.favorites.add(path);
-      showToast('Adicionado aos favoritos');
-    }
-    saveFavorites();
-    updateFavoriteBtn();
-    renderTree();
-  }
-
-  function updateFavoriteBtn() {
-    if (state.currentIndex < 0) {
-      els.btnFav.disabled = true;
-      return;
-    }
-    els.btnFav.disabled = false;
-    const path = state.flatAudio[state.currentIndex].path;
-    const isFav = state.favorites.has(path);
-    els.btnFav.classList.toggle('fav-active', isFav);
-    if (isFav) {
-      els.iconFav.innerHTML = '<path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>';
-    } else {
-      els.iconFav.innerHTML = '<path fill="currentColor" d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/>';
-    }
-  }
-
-  // ============ UI Helpers ============
-  function formatTime(s) {
-    if (!isFinite(s)) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `\( {m}: \){sec.toString().padStart(2, '0')}`;
-  }
-
-  function showToast(msg, ms = 2200) {
-    els.toast.textContent = msg;
-    els.toast.classList.remove('hidden');
-    clearTimeout(els.toast._tid);
-    els.toast._tid = setTimeout(() => els.toast.classList.add('hidden'), ms);
-  }
-
-  // ============ Persistence ============
-  function saveFavorites() {
-    localStorage.setItem('emp_favorites', JSON.stringify([...state.favorites]));
-  }
-  function loadFavorites() {
-    try {
-      const arr = JSON.parse(localStorage.getItem('emp_favorites') || '[]');
-      state.favorites = new Set(arr);
-    } catch {}
-  }
-
-  function saveColors() {
-    const colors = {}; \]('.color-grid input[type="color"]').forEach(inp => {
-      colors[inp.id] = inp.value;
-    });
-    localStorage.setItem('emp_colors', JSON.stringify(colors));
-  }
-
-  function loadColors() {
-    try {
-      const colors = JSON.parse(localStorage.getItem('emp_colors') || '{}');
-      Object.entries(colors).forEach(([id, val]) => {
-        const inp = document.getElementById(id);
-        if (inp) {
-          inp.value = val;
-          applyColor(id, val);
-        }
-      });
-    } catch {}
-  }
-
-  function applyColor(id, val) {
-    const map = {
-      'color-bg': '--bg',
-      'color-bg2': '--bg2',
-      'color-text': '--text',
-      'color-text2': '--text2',
-      'color-accent': '--accent',
-      'color-player': '--player',
-      'color-tree': '--tree',
-      'color-border': '--border',
-      'color-play': '--play',
-      'color-fav': '--fav',
-      'color-vol': '--vol',
-      'color-progress': '--progress',
-    };
-    if (map[id]) {
-      document.documentElement.style.setProperty(map[id], val);
-      if (id === 'color-bg') document.querySelector('meta[name="theme-color"]')?.setAttribute('content', val);
-    }
-  }
-
-  function saveSettings() {
-    localStorage.setItem('emp_settings', JSON.stringify({
-      volume: state.volume,
-      volWidth: els.volumeWidth.value,
-      effect: state.audioEffect,
-      shuffle: state.shuffle,
-      repeat: state.repeat,
-      queueMode: state.queueMode,
-      autoPlayNext: state.autoPlayNext,
-      rememberPosition: state.rememberPosition,
-      showHidden: state.showHidden,
-    }));
-  }
-
-  function loadSettings() {
-    try {
-      const s = JSON.parse(localStorage.getItem('emp_settings') || '{}');
-      if (s.volume != null) {
-        state.volume = s.volume;
-        els.volume.value = Math.round(s.volume * 100);
-        els.volumeValue.textContent = Math.round(s.volume * 100) + '%';
-        audioEl.volume = s.volume;
-      }
-      if (s.volWidth) {
-        els.volumeWidth.value = s.volWidth;
-        document.documentElement.style.setProperty('--vol-width', s.volWidth + 'px');
-      }
-      if (s.effect) {
-        state.audioEffect = s.effect;
-        \[ (`input[name="audio-effect"]`).forEach(r => r.checked = r.value === s.effect);
-        applyEffect(s.effect);
-      }
-      if (s.shuffle != null) {
-        state.shuffle = s.shuffle;
-        $('#btn-shuffle').classList.toggle('on', s.shuffle);
-      }
-      if (s.repeat != null) {
-        state.repeat = s.repeat;
-        $('#btn-repeat').classList.toggle('on', s.repeat > 0);
-      }
-      if (s.queueMode) {
-        state.queueMode = s.queueMode;
-        els.btnQueueMode.textContent = s.queueMode === 'all' ? 'Tudo' : s.queueMode === 'favorites' ? 'Favoritos' : 'Pasta';
-      }
-      if (s.autoPlayNext != null) {
-        state.autoPlayNext = s.autoPlayNext;
-        $('#opt-auto-play-next').checked = s.autoPlayNext;
-      }
-      if (s.rememberPosition != null) {
-        state.rememberPosition = s.rememberPosition;
-        $('#opt-remember-position').checked = s.rememberPosition;
-      }
-      if (s.showHidden != null) {
-        state.showHidden = s.showHidden;
-        $('#opt-show-hidden').checked = s.showHidden;
-      }
-    } catch {}
-  }
-
-  function saveRecentRootName(name) {
-    localStorage.setItem('emp_root_name', name);
-  }
-
-  function loadPositions() {
-    try {
-      state.positions = JSON.parse(localStorage.getItem('emp_positions') || '{}');
-    } catch { state.positions = {}; }
-  }
-  function savePosition() {
-    if (state.currentIndex >= 0 && state.rememberPosition) {
-      const path = state.flatAudio[state.currentIndex].path;
-      state.positions[path] = audioEl.currentTime;
-      localStorage.setItem('emp_positions', JSON.stringify(state.positions));
-    }
-  }
-
-  // ============ Event Listeners ============
-  function bindEvents() {
-    $('#btn-select-root').addEventListener('click', selectRoot);
-    $('#btn-select-root-empty').addEventListener('click', selectRoot);
-    $('#btn-refresh').addEventListener('click', async () => {
-      if (!state.rootHandle) return;
-      showToast('Atualizando...');
-      try {
-        const tree = await scanDirectory(state.rootHandle);
-        state.tree = tree;
-        state.flatAudio = collectFlat(tree);
-        renderTree();
-        showToast(`${state.flatAudio.length} faixas`);
-      } catch (e) {
-        showToast('Erro ao atualizar. Selecione a pasta novamente.');
-      }
-    });
-
-    $('#btn-settings').addEventListener('click', () => {
-      els.settingsModal.classList.remove('hidden');
-    });
-    $('#btn-close-settings').addEventListener('click', () => {
-      els.settingsModal.classList.add('hidden');
-      saveSettings();
-      saveColors();
-    });
-    els.settingsModal.addEventListener('click', (e) => {
-      if (e.target === els.settingsModal) {
-        els.settingsModal.classList.add('hidden');
-        saveSettings();
-        saveColors();
-      }
-    });
-
-    $('#btn-play').addEventListener('click', togglePlay);
-    $('#btn-next').addEventListener('click', playNext);
-    $('#btn-prev').addEventListener('click', playPrev);
-
-    $('#btn-shuffle').addEventListener('click', () => {
-      state.shuffle = !state.shuffle;
-      $('#btn-shuffle').classList.toggle('on', state.shuffle);
-      saveSettings();
-    });
-
-    $('#btn-repeat').addEventListener('click', () => {
-      state.repeat = (state.repeat + 1) % 3;
-      const btn = $('#btn-repeat');
-      btn.classList.toggle('on', state.repeat > 0);
-      btn.title = state.repeat === 0 ? 'Repetir' : state.repeat === 1 ? 'Repetir tudo' : 'Repetir uma';
-      saveSettings();
-    });
-
-    $('#btn-favorite').addEventListener('click', () => {
-      if (state.currentIndex >= 0) toggleFavorite(state.flatAudio[state.currentIndex].path);
-    });
-
-    $('#btn-favorites-filter').addEventListener('click', () => {
-      state.filterFavorites = !state.filterFavorites;
-      $('#btn-favorites-filter').classList.toggle('active', state.filterFavorites);
-      if (state.filterFavorites) {
-        state.queueMode = 'favorites';
-        els.btnQueueMode.textContent = 'Favoritos';
-        showToast('Filtrando favoritos');
-      } else {
-        state.queueMode = 'folder';
-        els.btnQueueMode.textContent = 'Pasta';
-        showToast('Mostrando tudo');
-      }
-      saveSettings();
-    });
-
-    els.btnQueueMode.addEventListener('click', () => {
-      const modes = ['folder', 'all', 'favorites'];
-      const i = modes.indexOf(state.queueMode);
-      state.queueMode = modes[(i + 1) % 3];
-      const labels = { folder: 'Pasta', all: 'Tudo', favorites: 'Favoritos' };
-      els.btnQueueMode.textContent = labels[state.queueMode];
-      state.filterFavorites = state.queueMode === 'favorites';
-      $('#btn-favorites-filter').classList.toggle('active', state.filterFavorites);
-      saveSettings();
-      showToast('Modo: ' + labels[state.queueMode]);
-    });
-
-    els.volume.addEventListener('input', () => {
-      const v = els.volume.value / 100;
-      state.volume = v;
-      state.muted = false;
-      audioEl.volume = v;
-      els.volumeValue.textContent = els.volume.value + '%';
-      els.btnVolumeToggle.classList.remove('muted');
-      saveSettings();
-    });
-
-    els.btnVolumeToggle.addEventListener('click', () => {
-      if (state.muted) {
-        state.muted = false;
-        audioEl.volume = state.volume;
-        els.volume.value = Math.round(state.volume * 100);
-        els.btnVolumeToggle.classList.remove('muted');
-      } else {
-        state.muted = true;
-        state.prevVolume = state.volume;
-        audioEl.volume = 0;
-        els.btnVolumeToggle.classList.add('muted');
-      }
-    });
-
-    els.volumeWidth.addEventListener('input', () => {
-      document.documentElement.style.setProperty('--vol-width', els.volumeWidth.value + 'px');
-      saveSettings();
-    });
-
-    els.progress.addEventListener('input', () => {
-      if (!audioEl.duration) return;
-      audioEl.currentTime = (els.progress.value / 1000) * audioEl.duration;
-    });
-
-    audioEl.addEventListener('timeupdate', () => {
-      if (!audioEl.duration) return;
-      els.progress.value = (audioEl.currentTime / audioEl.duration) * 1000;
-      els.timeCurrent.textContent = formatTime(audioEl.currentTime);
-      els.timeTotal.textContent = formatTime(audioEl.duration);
-      if (Math.floor(audioEl.currentTime) % 5 === 0) savePosition();
-    });
-
-    audioEl.addEventListener('ended', () => {
-      savePosition();
-      if (state.repeat === 2) {
-        audioEl.currentTime = 0;
-        audioEl.play();
-      } else if (state.autoPlayNext) {
-        playNext();
-      } else {
-        state.isPlaying = false;
-        updatePlayIcon();
-      }
-    });
-
-    audioEl.addEventListener('play', () => {
-      state.isPlaying = true;
-      updatePlayIcon();
-    });
-    audioEl.addEventListener('pause', () => {
-      state.isPlaying = false;
-      updatePlayIcon();
-    }); \]('.color-grid input[type="color"]').forEach(inp => {
-      inp.addEventListener('input', () => {
-        applyColor(inp.id, inp.value);
-      });
-    });
-    $('#btn-reset-colors').addEventListener('click', () => {
-      const defaults = {
-        'color-bg': '#0f0f13',
-        'color-bg2': '#1a1a22',
-        'color-text': '#e8e8ed',
-        'color-text2': '#9a9aa8',
-        'color-accent': '#7c5cff',
-        'color-player': '#16161e',
-        'color-tree': '#1e1e28',
-        'color-border': '#2a2a36',
-        'color-play': '#7c5cff',
-        'color-fav': '#ff5c8a',
-        'color-vol': '#1a1a22',
-        'color-progress': '#7c5cff',
-      };
-      Object.entries(defaults).forEach(([id, val]) => {
-        const inp = document.getElementById(id);
-        if (inp) {
-          inp.value = val;
-          applyColor(id, val);
-        }
-      });
-      localStorage.removeItem('emp_colors');
-    });
-
-    $$('input[name="audio-effect"]').forEach(r => {
-      r.addEventListener('change', () => {
-        if (r.checked) {
-          applyEffect(r.value);
-          saveSettings();
-        }
-      });
-    });
-
-    $('#opt-auto-play-next').addEventListener('change', (e) => {
-      state.autoPlayNext = e.target.checked;
-      saveSettings();
-    });
-    $('#opt-remember-position').addEventListener('change', (e) => {
-      state.rememberPosition = e.target.checked;
-      saveSettings();
-    });
-    $('#opt-show-hidden').addEventListener('change', (e) => {
-      state.showHidden = e.target.checked;
-      saveSettings();
-      if (state.rootHandle) {
-        $('#btn-refresh').click();
-      }
-    });
-
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.setActionHandler('play', () => { audioEl.play(); });
-      navigator.mediaSession.setActionHandler('pause', () => { audioEl.pause(); });
-      navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-      navigator.mediaSession.setActionHandler('nexttrack', playNext);
-    }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
-      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-      if (e.code === 'ArrowRight') playNext();
-      if (e.code === 'ArrowLeft') playPrev();
-      if (e.code === 'ArrowUp') {
-        els.volume.value = Math.min(100, +els.volume.value + 5);
-        els.volume.dispatchEvent(new Event('input'));
-      }
-      if (e.code === 'ArrowDown') {
-        els.volume.value = Math.max(0, +els.volume.value - 5);
-        els.volume.dispatchEvent(new Event('input'));
-      }
-    });
-  }
-
-  // ============ Init ============
-  function init() {
-    loadFavorites();
-    loadColors();
-    loadSettings();
-    loadPositions();
-    bindEvents();
-    applyEffect(state.audioEffect);
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
-
-    if (!window.showDirectoryPicker) {
-      showToast('Este navegador não suporta seleção de pastas. Use Chrome no Android.', 5000);
-    }
-  }
-
-  init();
-})();
