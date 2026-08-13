@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aiivo Music Player</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6200ee">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
 
     <div class="app-container">
-        <!-- Cabeçalho -->
         <header>
             <div class="header-title">
                 <i class="fa-solid fa-music"></i> <span>Aiivo Explorer Player</span>
@@ -18,7 +19,6 @@
             <button id="btn-settings" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
         </header>
 
-        <!-- Conteúdo Principal: Explorador de Pastas -->
         <main class="main-content">
             <div class="path-navigator">
                 <button id="btn-back" class="icon-btn" disabled><i class="fa-solid fa-arrow-left"></i></button>
@@ -29,19 +29,17 @@
             <div id="explorer-list" class="explorer-list">
                 <div class="welcome-message">
                     <i class="fa-solid fa-folder-tree"></i>
-                    <p>Toque em "Raiz" para selecionar a pasta de músicas do seu celular.</p>
+                    <p>Toque em "Raiz" para selecionar a pasta de músicas.</p>
                 </div>
             </div>
         </main>
 
-        <!-- Player e Controles -->
         <div class="player-section">
             <div class="now-playing-info">
                 <span id="current-song-title">Nenhuma música tocando</span>
                 <button id="btn-favorite" class="icon-btn"><i class="fa-regular fa-heart"></i></button>
             </div>
 
-            <!-- Barra de Progresso -->
             <div class="progress-container">
                 <span id="time-current">00:00</span>
                 <input type="range" id="progress-bar" value="0" min="0" max="100" step="0.1">
@@ -49,14 +47,12 @@
             </div>
 
             <div class="player-controls-row">
-                <!-- Controles Principais -->
                 <div class="main-controls">
                     <button id="btn-prev" class="icon-btn"><i class="fa-solid fa-backward-step"></i></button>
                     <button id="btn-play-pause" class="icon-btn primary-play"><i class="fa-solid fa-play"></i></button>
                     <button id="btn-next" class="icon-btn"><i class="fa-solid fa-forward-step"></i></button>
                 </div>
 
-                <!-- Volume Vertical e Toggle -->
                 <div class="volume-control-wrapper">
                     <div id="volume-popup" class="volume-popup">
                         <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1" orient="vertical">
@@ -67,45 +63,31 @@
         </div>
     </div>
 
-    <!-- Menu de Configurações / Cores / Áudio 3D -->
     <div id="settings-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Configurações</h2>
                 <button id="btn-close-settings" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            
             <div class="settings-body">
                 <div class="setting-group">
-                    <label>Filtros / Simulação</label>
                     <button id="btn-filter-favorites" class="secondary-btn"><i class="fa-solid fa-heart"></i> Ver Favoritos</button>
                 </div>
-
                 <div class="setting-group">
-                    <label>Personalização de Cores</label>
+                    <label>Personalização</label>
                     <div class="color-pickers">
-                        <div>
-                            <span>Principal</span>
-                            <input type="color" id="color-primary" value="#6200ee">
-                        </div>
-                        <div>
-                            <span>Fundo</span>
-                            <input type="color" id="color-bg" value="#121212">
-                        </div>
-                        <div>
-                            <span>Texto</span>
-                            <input type="color" id="color-text" value="#ffffff">
-                        </div>
+                        <div><span>Principal</span><input type="color" id="color-primary" value="#6200ee"></div>
+                        <div><span>Fundo</span><input type="color" id="color-bg" value="#121212"></div>
+                        <div><span>Texto</span><input type="color" id="color-text" value="#ffffff"></div>
                     </div>
                 </div>
-
                 <div class="setting-group">
-                    <label>Efeitos de Áudio Espacial</label>
+                    <label>Efeitos de Áudio</label>
                     <select id="audio-effect-select" class="styled-select">
-                        <option value="normal">Normal (Sem Efeito)</option>
-                        <option value="3d">Áudio 3D (Spatial)</option>
-                        <option value="8d">Áudio 8D (Rotação Lenta)</option>
-                        <option value="16d">Áudio 16D (Rotação Rápida)</option>
+                        <option value="normal">Normal</option>
+                        <option value="3d">Áudio 3D</option>
+                        <option value="8d">Áudio 8D</option>
+                        <option value="16d">Áudio 16D</option>
                     </select>
                 </div>
             </div>
