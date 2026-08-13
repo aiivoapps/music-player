@@ -43,13 +43,29 @@ btnSelectRoot.addEventListener('click', async () => {
     } catch (err) { console.log('Erro:', err); }
 });
 
+// Carregamento rápido: lê apenas o nível atual da pasta instantaneamente
 async function loadDirectory(dirHandle, pathName = dirHandle.name) {
     currentDirectoryHandle = dirHandle;
     currentPathLabel.textContent = pathName;
     btnBack.disabled = directoryHistory.length === 0;
-    explorerList.innerHTML = '';
+    explorerList.innerHTML = '<div class="welcome-message"><p>Carregando...</p></div>';
+    
     audioFilesFlat = [];
+    let entries = [];
+
     for await (const entry of dirHandle.values()) {
+        entries.push(entry);
+    }
+
+    // Ordenar pastas primeiro, depois arquivos
+    entries.sort((a, b) => {
+        if (a.kind === b.kind) return a.name.localeCompare(b.name);
+        return a.kind === 'directory' ? -1 : 1;
+    });
+
+    explorerList.innerHTML = '';
+
+    for (const entry of entries) {
         if (entry.kind === 'directory') {
             const div = document.createElement('div');
             div.className = 'explorer-item';
@@ -59,10 +75,10 @@ async function loadDirectory(dirHandle, pathName = dirHandle.name) {
                 loadDirectory(entry, `${pathName} / ${entry.name}`);
             };
             explorerList.appendChild(div);
-            await collectAudioRecursive(entry, audioFilesFlat);
         } else if (entry.kind === 'file' && isAudioFile(entry.name)) {
             const fileObj = await entry.getFile();
             audioFilesFlat.push(fileObj);
+
             const div = document.createElement('div');
             div.className = 'explorer-item';
             div.innerHTML = `<i class="fa-solid fa-file-audio"></i><span>${entry.name}</span>`;
@@ -70,14 +86,20 @@ async function loadDirectory(dirHandle, pathName = dirHandle.name) {
             explorerList.appendChild(div);
         }
     }
+
+    // Se houver subpastas, fazemos a varredura recursiva em segundo plano (sem traçar a tela) para manter o botão "Próxima" funcionando perfeitamente
+    backgroundRecursiveCollect(dirHandle);
 }
 
-async function collectAudioRecursive(dirHandle, list) {
+async function backgroundRecursiveCollect(dirHandle) {
     for await (const entry of dirHandle.values()) {
-        if (entry.kind === 'directory') await collectAudioRecursive(entry, list);
-        else if (entry.kind === 'file' && isAudioFile(entry.name)) {
+        if (entry.kind === 'directory') {
+            backgroundRecursiveCollect(entry);
+        } else if (entry.kind === 'file' && isAudioFile(entry.name)) {
             const fileObj = await entry.getFile();
-            list.push(fileObj);
+            if (!audioFilesFlat.some(f => f.name === fileObj.name)) {
+                audioFilesFlat.push(fileObj);
+            }
         }
     }
 }
@@ -100,8 +122,8 @@ async function playAudioFile(fileObj, index) {
 }
 
 btnPlayPause.onclick = () => { if (audioElement.paused) { audioElement.play(); btnPlayPause.innerHTML = '<i class="fa-solid fa-pause"></i>'; } else { audioElement.pause(); btnPlayPause.innerHTML = '<i class="fa-solid fa-play"></i>'; } };
-btnNext.onclick = () => { currentSongIndex = (currentSongIndex + 1) % audioFilesFlat.length; playAudioFile(audioFilesFlat[currentSongIndex], currentSongIndex); };
-btnPrev.onclick = () => { currentSongIndex = (currentSongIndex - 1 + audioFilesFlat.length) % audioFilesFlat.length; playAudioFile(audioFilesFlat[currentSongIndex], currentSongIndex); };
+btnNext.onclick = () => { if(audioFilesFlat.length === 0) return; currentSongIndex = (currentSongIndex + 1) % audioFilesFlat.length; playAudioFile(audioFilesFlat[currentSongIndex], currentSongIndex); };
+btnPrev.onclick = () => { if(audioFilesFlat.length === 0) return; currentSongIndex = (currentSongIndex - 1 + audioFilesFlat.length) % audioFilesFlat.length; playAudioFile(audioFilesFlat[currentSongIndex], currentSongIndex); };
 audioElement.ontimeupdate = () => { if(audioElement.duration) progressBar.value = (audioElement.currentTime / audioElement.duration) * 100; };
 
 btnSettings.onclick = () => settingsModal.classList.remove('hidden');
